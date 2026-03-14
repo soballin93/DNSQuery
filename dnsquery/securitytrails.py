@@ -37,6 +37,36 @@ def get_subdomains(domain: str, api_key: str) -> tuple[list[str], str | None]:
     return fqdns, None
 
 
+def get_domain_details(domain: str, api_key: str) -> tuple[dict | None, str | None]:
+    """Fetch current DNS records for *domain* from SecurityTrails.
+
+    Returns (current_dns_dict, None) on success or (None, error_message) on failure.
+    """
+    url = f"{_BASE_URL}/domain/{domain}"
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("APIKEY", api_key)
+    req.add_header("Accept", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return None, "Invalid API key."
+        if e.code == 429:
+            return None, "SecurityTrails rate limit exceeded. Try again later."
+        return None, f"SecurityTrails API error: HTTP {e.code}"
+    except urllib.error.URLError as e:
+        return None, f"Could not reach SecurityTrails: {e.reason}"
+    except Exception as e:
+        return None, f"SecurityTrails error: {e}"
+
+    current_dns = data.get("current_dns")
+    if current_dns is None:
+        return None, "No current_dns data in SecurityTrails response."
+    return current_dns, None
+
+
 def ping(api_key: str) -> tuple[bool, str | None]:
     """Verify that an API key is valid by hitting the ping endpoint.
 

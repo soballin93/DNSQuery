@@ -10,7 +10,8 @@ from dnsquery.gui.input_panel import InputPanel
 from dnsquery.gui.results_panel import ResultsPanel
 from dnsquery.gui.styles import configure_styles
 from dnsquery.models import QueryResult
-from dnsquery.securitytrails import get_subdomains
+from dnsquery.securitytrails import get_domain_details, get_subdomains
+from dnsquery.validation import ValidationResult, validate_dns
 from dnsquery.whois_lookup import lookup_whois
 
 
@@ -95,13 +96,23 @@ class DNSQueryApp(tk.Tk):
                 if whois_err:
                     result.errors.append(f"WHOIS: {whois_err}")
 
-            self.after(0, lambda: self._on_query_complete(result))
+            # Validate DNS against SecurityTrails if API key is present
+            validation: ValidationResult | None = None
+            if self._api_key and not is_ip_address(query):
+                st_dns, st_err = get_domain_details(query, self._api_key)
+                if st_err:
+                    result.errors.append(f"SecurityTrails validation: {st_err}")
+                elif st_dns is not None:
+                    validation = validate_dns(result, st_dns)
+                    result.errors.extend(validation.errors)
+
+            self.after(0, lambda: self._on_query_complete(result, validation))
         except Exception as e:
             self.after(0, lambda: self.input_panel.set_error(str(e)))
 
-    def _on_query_complete(self, result: QueryResult) -> None:
+    def _on_query_complete(self, result: QueryResult, validation: ValidationResult | None = None) -> None:
         self._result = result
-        self.results_panel.populate(result)
+        self.results_panel.populate(result, validation=validation)
         self.input_panel.set_done(error_count=len(result.errors))
 
     def _poll(self) -> None:
