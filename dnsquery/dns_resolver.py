@@ -4,11 +4,9 @@ import ipaddress
 from datetime import datetime
 
 import dns.name
-import dns.query
 import dns.rdatatype
 import dns.resolver
 import dns.reversename
-import dns.zone
 
 from dnsquery.models import DnsRecord, QueryResult, SoaRecord
 
@@ -16,7 +14,7 @@ from dnsquery.models import DnsRecord, QueryResult, SoaRecord
 QUERY_TIMEOUT = 5.0  # seconds per query
 QUERY_LIFETIME = 10.0  # seconds total lifetime
 
-# Record types queried for a domain lookup (fallback when AXFR is unavailable)
+# Record types queried for a domain lookup
 _RECORD_TYPES = [
     "A",
     "AAAA",
@@ -45,68 +43,6 @@ def is_ip_address(input_str: str) -> bool:
         return True
     except ValueError:
         return False
-
-
-def _get_nameserver_ips(domain: str) -> list[str]:
-    """Resolve the IP addresses of the authoritative nameservers for *domain*."""
-    resolver = dns.resolver.Resolver()
-    resolver.timeout = QUERY_TIMEOUT
-    resolver.lifetime = QUERY_LIFETIME
-    ips: list[str] = []
-    try:
-        ns_answer = resolver.resolve(domain, "NS")
-        for rdata in ns_answer:
-            ns_name = str(rdata.target)
-            try:
-                a_answer = resolver.resolve(ns_name, "A")
-                for a_rdata in a_answer:
-                    ips.append(str(a_rdata))
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return ips
-
-
-def _try_zone_transfer(domain: str, errors: list[str]) -> list[DnsRecord] | None:
-    """Attempt an AXFR zone transfer. Returns all records or None if refused."""
-    ns_ips = _get_nameserver_ips(domain)
-    if not ns_ips:
-        return None
-
-    for ns_ip in ns_ips:
-        try:
-            zone = dns.zone.from_xfr(
-                dns.query.xfr(ns_ip, domain, timeout=QUERY_TIMEOUT)
-            )
-            records: list[DnsRecord] = []
-            for name, node in zone.nodes.items():
-                for rdataset in node.rdatasets:
-                    rdtype = dns.rdatatype.to_text(rdataset.rdtype)
-                    for rdata in rdataset:
-                        priority: int | None = None
-                        if rdtype == "MX":
-                            priority = rdata.preference
-                        elif rdtype == "SRV":
-                            priority = rdata.priority
-                        records.append(
-                            DnsRecord(
-                                record_type=rdtype,
-                                name=str(name) if str(name) == "@" else f"{name}.{domain}.",
-                                ttl=rdataset.ttl,
-                                value=str(rdata),
-                                priority=priority,
-                            )
-                        )
-            return records
-        except Exception:
-            continue
-
-    errors.append(
-        "Zone transfer (AXFR) refused by all nameservers. "
-        "Only directly queried record types are shown."
-    )
-    return None
 
 
 def _query_record_type(
@@ -210,47 +146,31 @@ def resolve_domain(
 ) -> QueryResult:
     """Perform a comprehensive DNS lookup for *domain*.
 
-    First attempts a zone transfer (AXFR) to get all records including every
-    subdomain. If AXFR is refused, falls back to per-type queries on the apex.
-
-    If *subdomains* is provided (e.g. from SecurityTrails), each subdomain is
-    queried for CNAME records.
+    Queries all standard record types on the apex domain. If *subdomains* is
+    provided (e.g. from SecurityTrails), each subdomain is also queried for
+    CNAME records.
     """
     errors: list[str] = []
     dns_records: list[DnsRecord] = []
     nameservers: list[DnsRecord] = []
     soa: SoaRecord | None = None
 
-    # Try zone transfer first — this gets ALL records including all CNAMEs
-    axfr_records = _try_zone_transfer(domain, errors)
+    for rdtype in _RECORD_TYPES:
+        if rdtype == "SOA":
+            soa = _query_soa(domain, errors)
+            soa_records = _query_record_type(domain, "SOA", errors)
+            dns_records.extend(soa_records)
+        elif rdtype == "NS":
+            ns_records = _query_record_type(domain, "NS", errors)
+            nameservers.extend(ns_records)
+            dns_records.extend(ns_records)
+        else:
+            dns_records.extend(_query_record_type(domain, rdtype, errors))
 
-    if axfr_records is not None:
-        # AXFR succeeded — extract NS, SOA, and all records
-        for rec in axfr_records:
-            dns_records.append(rec)
-            if rec.record_type == "NS" and rec.name in ("@", domain + ".", domain):
-                nameservers.append(rec)
-
-        # Still parse SOA into its dedicated field
-        soa = _query_soa(domain, errors)
-    else:
-        # AXFR refused — fall back to per-type queries on the apex
-        for rdtype in _RECORD_TYPES:
-            if rdtype == "SOA":
-                soa = _query_soa(domain, errors)
-                soa_records = _query_record_type(domain, "SOA", errors)
-                dns_records.extend(soa_records)
-            elif rdtype == "NS":
-                ns_records = _query_record_type(domain, "NS", errors)
-                nameservers.extend(ns_records)
-                dns_records.extend(ns_records)
-            else:
-                dns_records.extend(_query_record_type(domain, rdtype, errors))
-
-        # Query each known subdomain for CNAME records
-        if subdomains:
-            for fqdn in subdomains:
-                dns_records.extend(_query_record_type(fqdn, "CNAME", errors))
+    # Query each known subdomain for CNAME records
+    if subdomains:
+        for fqdn in subdomains:
+            dns_records.extend(_query_record_type(fqdn, "CNAME", errors))
 
     return QueryResult(
         query_input=domain,
