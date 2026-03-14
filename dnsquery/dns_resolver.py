@@ -18,8 +18,8 @@ QUERY_LIFETIME = 10.0  # seconds total lifetime
 _RECORD_TYPES = [
     "A",
     "AAAA",
-    "MX",
     "CNAME",
+    "MX",
     "TXT",
     "SRV",
     "PTR",
@@ -50,14 +50,7 @@ def _query_record_type(
     rdtype: str,
     errors: list[str],
 ) -> list[DnsRecord]:
-    """Query a single DNS record type and return a list of DnsRecord objects.
-
-    Catches common dnspython exceptions:
-    - NoAnswer: silently skipped (no records of that type).
-    - NXDOMAIN, NoNameservers, Timeout: message appended to *errors*.
-
-    Returns an empty list on any failure.
-    """
+    """Query a single DNS record type and return a list of DnsRecord objects."""
     resolver = dns.resolver.Resolver()
     resolver.timeout = QUERY_TIMEOUT
     resolver.lifetime = QUERY_LIFETIME
@@ -147,11 +140,15 @@ def _query_soa(domain: str, errors: list[str]) -> SoaRecord | None:
     return None
 
 
-def resolve_domain(domain: str) -> QueryResult:
+def resolve_domain(
+    domain: str,
+    subdomains: list[str] | None = None,
+) -> QueryResult:
     """Perform a comprehensive DNS lookup for *domain*.
 
-    Queries all standard record types and populates a QueryResult with the
-    collected DNS records, nameservers and SOA information.
+    Queries all standard record types on the apex domain. If *subdomains* is
+    provided (e.g. from SecurityTrails), each subdomain is also queried for
+    CNAME records.
     """
     errors: list[str] = []
     dns_records: list[DnsRecord] = []
@@ -160,19 +157,20 @@ def resolve_domain(domain: str) -> QueryResult:
 
     for rdtype in _RECORD_TYPES:
         if rdtype == "SOA":
-            # SOA gets special treatment: populate dedicated field AND
-            # add to the general dns_records list.
             soa = _query_soa(domain, errors)
             soa_records = _query_record_type(domain, "SOA", errors)
             dns_records.extend(soa_records)
         elif rdtype == "NS":
-            # NS gets special treatment: populate nameservers field AND
-            # add to the general dns_records list.
             ns_records = _query_record_type(domain, "NS", errors)
             nameservers.extend(ns_records)
             dns_records.extend(ns_records)
         else:
             dns_records.extend(_query_record_type(domain, rdtype, errors))
+
+    # Query each known subdomain for CNAME records
+    if subdomains:
+        for fqdn in subdomains:
+            dns_records.extend(_query_record_type(fqdn, "CNAME", errors))
 
     return QueryResult(
         query_input=domain,
@@ -186,16 +184,11 @@ def resolve_domain(domain: str) -> QueryResult:
 
 
 def resolve_ip(ip_address: str) -> QueryResult:
-    """Perform a reverse DNS lookup for *ip_address*.
-
-    Uses ``dns.reversename.from_address`` to build the PTR query name,
-    then attempts a forward lookup on any resulting hostname.
-    """
+    """Perform a reverse DNS lookup for *ip_address*."""
     errors: list[str] = []
     reverse_records: list[DnsRecord] = []
     dns_records: list[DnsRecord] = []
 
-    # Reverse lookup (PTR)
     try:
         rev_name = dns.reversename.from_address(ip_address)
         ptr_records = _query_record_type(str(rev_name), "PTR", errors)
@@ -203,7 +196,6 @@ def resolve_ip(ip_address: str) -> QueryResult:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"Error performing reverse lookup for '{ip_address}': {exc}")
 
-    # Forward lookup on each hostname found via PTR
     for ptr in reverse_records:
         hostname = ptr.value.rstrip(".")
         if hostname:

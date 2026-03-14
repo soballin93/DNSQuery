@@ -5,12 +5,16 @@ from tkinter import ttk
 
 from dnsquery.gui.styles import (
     BG_SECONDARY,
+    ERROR,
     FONT_HEADING,
     FONT_MONO,
     PAD_X,
     PAD_Y,
+    SUCCESS,
+    WARNING,
 )
 from dnsquery.models import QueryResult
+from dnsquery.validation import ValidationResult
 
 
 class ResultsPanel(ttk.Notebook):
@@ -24,6 +28,7 @@ class ResultsPanel(ttk.Notebook):
         self.soa_tab = _SoaTab(self)
         self.dns_tab = _TreeTab(self, columns=("Type", "Name", "TTL", "Value", "Priority"))
         self.whois_tab = _WhoisTab(self)
+        self.validation_tab = _ValidationTab(self)
         self.errors_tab = _TextTab(self)
 
         self.add(self.summary_tab, text=" Summary ")
@@ -31,9 +36,10 @@ class ResultsPanel(ttk.Notebook):
         self.add(self.soa_tab, text=" SOA ")
         self.add(self.dns_tab, text=" DNS Records ")
         self.add(self.whois_tab, text=" WHOIS ")
+        self.add(self.validation_tab, text=" Validation ")
         self.add(self.errors_tab, text=" Errors ")
 
-    def populate(self, result: QueryResult) -> None:
+    def populate(self, result: QueryResult, validation: ValidationResult | None = None) -> None:
         self.summary_tab.populate(result)
         self.ns_tab.clear()
         for rec in result.nameservers:
@@ -69,12 +75,15 @@ class ResultsPanel(ttk.Notebook):
                     "",
                 )
 
+        self.validation_tab.populate(validation)
+
     def clear(self) -> None:
         self.summary_tab.clear()
         self.ns_tab.clear()
         self.soa_tab.clear()
         self.dns_tab.clear()
         self.whois_tab.clear()
+        self.validation_tab.clear()
         self.errors_tab.clear()
 
 
@@ -331,6 +340,89 @@ class _WhoisTab(ttk.Frame):
 
     def clear(self) -> None:
         self._set_text("")
+
+
+class _ValidationTab(ttk.Frame):
+    def __init__(self, parent: tk.Widget) -> None:
+        super().__init__(parent)
+        self._build()
+
+    def _build(self) -> None:
+        self._summary_label = ttk.Label(self, text="", font=FONT_HEADING, anchor="w")
+        self._summary_label.pack(fill="x", padx=PAD_X, pady=(PAD_Y, 4))
+
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True)
+
+        columns = ("Status", "Type", "DNS Value", "SecurityTrails Value", "Detail")
+        self._tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="extended")
+
+        self._tree.heading("Status", text="Status")
+        self._tree.heading("Type", text="Type")
+        self._tree.heading("DNS Value", text="DNS Value")
+        self._tree.heading("SecurityTrails Value", text="SecurityTrails Value")
+        self._tree.heading("Detail", text="Detail")
+
+        self._tree.column("Status", width=90, stretch=False)
+        self._tree.column("Type", width=60, stretch=False)
+        self._tree.column("DNS Value", width=250)
+        self._tree.column("SecurityTrails Value", width=250)
+        self._tree.column("Detail", width=250)
+
+        self._tree.tag_configure("match", foreground=SUCCESS)
+        self._tree.tag_configure("mismatch", foreground=ERROR)
+        self._tree.tag_configure("dns_only", foreground=WARNING)
+        self._tree.tag_configure("st_only", foreground=WARNING)
+
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=self._tree.xview)
+        self._tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+
+    def populate(self, validation: ValidationResult | None) -> None:
+        self.clear()
+        if validation is None:
+            self._summary_label.configure(
+                text="Validation requires a SecurityTrails API key. Use the API Key button to connect."
+            )
+            return
+
+        s = validation.summary
+        self._summary_label.configure(
+            text=f"Results: {s.matches} match, {s.mismatches} mismatch, "
+                 f"{s.dns_only} DNS-only, {s.st_only} SecurityTrails-only"
+        )
+
+        status_labels = {
+            "match": "Match",
+            "mismatch": "Mismatch",
+            "dns_only": "DNS Only",
+            "st_only": "ST Only",
+        }
+
+        for comp in validation.comparisons:
+            self._tree.insert(
+                "", "end",
+                values=(
+                    status_labels.get(comp.status, comp.status),
+                    comp.record_type,
+                    comp.dns_value,
+                    comp.st_value,
+                    comp.detail,
+                ),
+                tags=(comp.status,),
+            )
+
+    def clear(self) -> None:
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+        self._summary_label.configure(text="")
 
 
 class _TextTab(ttk.Frame):

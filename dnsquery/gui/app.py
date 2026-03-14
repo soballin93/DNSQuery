@@ -10,6 +10,8 @@ from dnsquery.gui.input_panel import InputPanel
 from dnsquery.gui.results_panel import ResultsPanel
 from dnsquery.gui.styles import configure_styles
 from dnsquery.models import QueryResult
+from dnsquery.securitytrails import get_domain_details, get_subdomains
+from dnsquery.validation import ValidationResult, validate_dns
 from dnsquery.whois_lookup import lookup_whois
 
 
@@ -23,6 +25,7 @@ class DNSQueryApp(tk.Tk):
         configure_styles(self)
 
         self._result: QueryResult | None = None
+        self._api_key: str | None = None
         self._build()
 
         # Force window on-screen (WSLg can place windows at negative coordinates)
@@ -30,7 +33,7 @@ class DNSQueryApp(tk.Tk):
         x = self.winfo_x()
         y = self.winfo_y()
         if x < 0 or y < 0:
-            self.geometry(f"+0+0")
+            self.geometry("+0+0")
         self.lift()
         self.focus_force()
 
@@ -42,11 +45,16 @@ class DNSQueryApp(tk.Tk):
             self,
             on_query=self._start_query,
             on_export=self._export_csv,
+            on_api_key=self._on_api_key_changed,
         )
         self.input_panel.pack(fill="x", padx=8, pady=(8, 4))
 
         self.results_panel = ResultsPanel(self)
         self.results_panel.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+
+    def _on_api_key_changed(self, api_key: str | None) -> None:
+        self._api_key = api_key
+        self.input_panel.set_api_connected(api_key is not None)
 
     def _start_query(self, query: str) -> None:
         self.input_panel.set_querying()
@@ -67,19 +75,44 @@ class DNSQueryApp(tk.Tk):
                     if whois_err:
                         result.errors.append(f"WHOIS: {whois_err}")
             else:
-                result = resolve_domain(query)
+                # If we have an API key, fetch subdomains from SecurityTrails
+                subdomains: list[str] | None = None
+                if self._api_key:
+                    subdomains, st_err = get_subdomains(query, self._api_key)
+                    if st_err:
+                        result_errors = [f"SecurityTrails: {st_err}"]
+                        # Continue without subdomains
+                        subdomains = None
+                    else:
+                        result_errors = []
+                else:
+                    result_errors = []
+
+                result = resolve_domain(query, subdomains=subdomains)
+                result.errors.extend(result_errors)
+
                 whois_info, whois_err = lookup_whois(query)
                 result.whois = whois_info
                 if whois_err:
                     result.errors.append(f"WHOIS: {whois_err}")
 
-            self.after(0, lambda: self._on_query_complete(result))
+            # Validate DNS against SecurityTrails if API key is present
+            validation: ValidationResult | None = None
+            if self._api_key and not is_ip_address(query):
+                st_dns, st_err = get_domain_details(query, self._api_key)
+                if st_err:
+                    result.errors.append(f"SecurityTrails validation: {st_err}")
+                elif st_dns is not None:
+                    validation = validate_dns(result, st_dns)
+                    result.errors.extend(validation.errors)
+
+            self.after(0, lambda: self._on_query_complete(result, validation))
         except Exception as e:
             self.after(0, lambda: self.input_panel.set_error(str(e)))
 
-    def _on_query_complete(self, result: QueryResult) -> None:
+    def _on_query_complete(self, result: QueryResult, validation: ValidationResult | None = None) -> None:
         self._result = result
-        self.results_panel.populate(result)
+        self.results_panel.populate(result, validation=validation)
         self.input_panel.set_done(error_count=len(result.errors))
 
     def _poll(self) -> None:
