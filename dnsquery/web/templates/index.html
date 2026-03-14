@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DNSQuery - Domain Transfer Toolkit</title>
+<style>
+  /* ========== Reset & Base ========== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f5f5f5;
+    color: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========== Colors ========== */
+  :root {
+    --bg-primary: #f5f5f5;
+    --bg-card: #ffffff;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --text-primary: #1a1a1a;
+    --text-secondary: #555555;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+    --border: #d1d5db;
+  }
+
+  /* ========== Header ========== */
+  .header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .header h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .api-status {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .api-status .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .api-status .dot.connected {
+    background: var(--success);
+  }
+
+  /* ========== Input Bar ========== */
+  .input-bar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .input-bar input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 14px;
+    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .input-bar input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+
+  .btn {
+    padding: 8px 18px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  .btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: #e5e7eb;
+  }
+
+  /* ========== Status Line ========== */
+  .status-line {
+    padding: 6px 24px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .status-line.error {
+    color: var(--error);
+  }
+
+  .status-line.success {
+    color: var(--success);
+  }
+
+  .status-line .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ========== Tabs ========== */
+  .tabs-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 24px 24px;
+    min-height: 0;
+  }
+
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+
+  .tab-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-panel {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    overflow: auto;
+  }
+
+  .tab-panel.active {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========== Pre-formatted text tabs ========== */
+  .preformatted {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    padding: 16px 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    flex: 1;
+    overflow: auto;
+    color: var(--text-primary);
+  }
+
+  .preformatted .section-title {
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .preformatted .separator {
+    color: var(--border);
+  }
+
+  /* ========== Sortable Tables ========== */
+  .table-wrapper {
+    flex: 1;
+    overflow: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  th {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  th:hover {
+    background: #e5e7eb;
+  }
+
+  th .sort-arrow {
+    margin-left: 4px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+
+  td {
+    padding: 8px 14px;
+    border-bottom: 1px solid #f0f0f0;
+    word-break: break-word;
+  }
+
+  tr:hover td {
+    background: #fafafa;
+  }
+
+  /* Validation row colors */
+  tr.status-match td { color: var(--success); }
+  tr.status-mismatch td { color: var(--error); }
+  tr.status-dns_only td { color: var(--warning); }
+  tr.status-st_only td { color: var(--warning); }
+
+  /* Validation summary line */
+  .validation-summary {
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 1px solid #f0f0f0;
+    flex-shrink: 0;
+  }
+
+  /* ========== Modal ========== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.visible {
+    display: flex;
+  }
+
+  .modal {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 380px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  }
+
+  .modal h2 {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+  }
+
+  .modal label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--text-secondary);
+  }
+
+  .modal input[type="password"] {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+    margin-bottom: 16px;
+  }
+
+  .modal input[type="password"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+
+  .modal .modal-error {
+    font-size: 0.8rem;
+    color: var(--error);
+    margin-bottom: 12px;
+    min-height: 1.2em;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  /* ========== Responsive ========== */
+  @media (max-width: 640px) {
+    .header { padding: 12px 16px; }
+    .input-bar { padding: 10px 16px; }
+    .status-line { padding: 6px 16px; }
+    .tabs-container { padding: 12px 16px 16px; }
+    .tab-btn { padding: 8px 12px; font-size: 0.82rem; }
+    .modal { min-width: 0; width: 95vw; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>DNSQuery - Domain Transfer Toolkit</h1>
+    <div class="api-status">
+      <span class="dot" id="apiDot"></span>
+      <span id="apiStatusText">SecurityTrails: not connected</span>
+    </div>
+  </div>
+
+  <!-- Input Bar -->
+  <div class="input-bar">
+    <input type="text" id="queryInput" placeholder="Enter domain or IP address..." autocomplete="off" />
+    <button class="btn btn-primary" id="queryBtn">Query</button>
+    <button class="btn btn-secondary" id="exportBtn" disabled>Export CSV</button>
+    <button class="btn btn-secondary" id="apiKeyBtn">API Key</button>
+  </div>
+
+  <!-- Status Line -->
+  <div class="status-line" id="statusLine">Ready</div>
+
+  <!-- Tabs -->
+  <div class="tabs-container">
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-tab="summary">Summary</button>
+      <button class="tab-btn" data-tab="nameservers">Name Servers</button>
+      <button class="tab-btn" data-tab="soa">SOA</button>
+      <button class="tab-btn" data-tab="dns">DNS Records</button>
+      <button class="tab-btn" data-tab="whois">WHOIS</button>
+      <button class="tab-btn" data-tab="validation">Validation</button>
+      <button class="tab-btn" data-tab="errors">Errors</button>
+    </div>
+
+    <!-- Summary Tab -->
+    <div class="tab-panel active" id="tab-summary">
+      <div class="preformatted" id="summaryContent">No data. Enter a domain or IP and click Query.</div>
+    </div>
+
+    <!-- Name Servers Tab -->
+    <div class="tab-panel" id="tab-nameservers">
+      <div class="table-wrapper">
+        <table id="nsTable">
+          <thead>
+            <tr>
+              <th data-col="0">Name <span class="sort-arrow"></span></th>
+              <th data-col="1">TTL <span class="sort-arrow"></span></th>
+              <th data-col="2">Value <span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SOA Tab -->
+    <div class="tab-panel" id="tab-soa">
+      <div class="preformatted" id="soaContent">No SOA record found.</div>
+    </div>
+
+    <!-- DNS Records Tab -->
+    <div class="tab-panel" id="tab-dns">
+      <div class="table-wrapper">
+        <table id="dnsTable">
+          <thead>
+            <tr>
+              <th data-col="0">Type <span class="sort-arrow"></span></th>
+              <th data-col="1">Name <span class="sort-arrow"></span></th>
+              <th data-col="2">TTL <span class="sort-arrow"></span></th>
+              <th data-col="3">Value <span class="sort-arrow"></span></th>
+              <th data-col="4">Priority <span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- WHOIS Tab -->
+    <div class="tab-panel" id="tab-whois">
+      <div class="preformatted" id="whoisContent">WHOIS data unavailable.</div>
+    </div>
+
+    <!-- Validation Tab -->
+    <div class="tab-panel" id="tab-validation">
+      <div class="validation-summary" id="validationSummary">Validation requires SecurityTrails API key. Use the API Key button to connect.</div>
+      <div class="table-wrapper">
+        <table id="validationTable">
+          <thead>
+            <tr>
+              <th data-col="0">Status <span class="sort-arrow"></span></th>
+              <th data-col="1">Type <span class="sort-arrow"></span></th>
+              <th data-col="2">DNS Value <span class="sort-arrow"></span></th>
+              <th data-col="3">SecurityTrails Value <span class="sort-arrow"></span></th>
+              <th data-col="4">Detail <span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Errors Tab -->
+    <div class="tab-panel" id="tab-errors">
+      <div class="preformatted" id="errorsContent">No errors or warnings.</div>
+    </div>
+  </div>
+
+  <!-- API Key Modal -->
+  <div class="modal-overlay" id="apiModal">
+    <div class="modal">
+      <h2>SecurityTrails API Key</h2>
+      <label for="apiKeyInput">Enter your API key</label>
+      <input type="password" id="apiKeyInput" placeholder="Your SecurityTrails API key" />
+      <div class="modal-error" id="apiModalError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modalDisconnect" style="margin-right: auto; display: none;">Disconnect</button>
+        <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+        <button class="btn btn-primary" id="modalConnect">Connect</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  'use strict';
+
+  /* ========== State ========== */
+  let apiKey = null;
+  let lastQuery = null;
+  let isQuerying = false;
+
+  /* ========== DOM References ========== */
+  const queryInput = document.getElementById('queryInput');
+  const queryBtn = document.getElementById('queryBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const apiKeyBtn = document.getElementById('apiKeyBtn');
+  const statusLine = document.getElementById('statusLine');
+  const apiDot = document.getElementById('apiDot');
+  const apiStatusText = document.getElementById('apiStatusText');
+
+  // Tabs
+  const tabBar = document.getElementById('tabBar');
+  const tabBtns = tabBar.querySelectorAll('.tab-btn');
+  const tabPanels = document.querySelectorAll('.tab-panel');
+
+  // Tab content
+  const summaryContent = document.getElementById('summaryContent');
+  const soaContent = document.getElementById('soaContent');
+  const whoisContent = document.getElementById('whoisContent');
+  const errorsContent = document.getElementById('errorsContent');
+  const validationSummary = document.getElementById('validationSummary');
+
+  // Tables
+  const nsTable = document.getElementById('nsTable');
+  const dnsTable = document.getElementById('dnsTable');
+  const validationTable = document.getElementById('validationTable');
+
+  // Modal
+  const apiModal = document.getElementById('apiModal');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const apiModalError = document.getElementById('apiModalError');
+  const modalConnect = document.getElementById('modalConnect');
+  const modalCancel = document.getElementById('modalCancel');
+  const modalDisconnect = document.getElementById('modalDisconnect');
+
+  /* ========== Tab Switching ========== */
+  tabBar.addEventListener('click', function(e) {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+    const tabId = btn.getAttribute('data-tab');
+    tabBtns.forEach(function(b) { b.classList.remove('active'); });
+    tabPanels.forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+  });
+
+  /* ========== Status Helpers ========== */
+  function setStatus(text, type) {
+    statusLine.textContent = '';
+    statusLine.className = 'status-line';
+    if (type === 'loading') {
+      var spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      statusLine.appendChild(spinner);
+      statusLine.appendChild(document.createTextNode(' ' + text));
+    } else {
+      statusLine.textContent = text;
+    }
+    if (type === 'error') statusLine.classList.add('error');
+    if (type === 'success') statusLine.classList.add('success');
+  }
+
+  function setApiStatus(connected) {
+    if (connected) {
+      apiDot.classList.add('connected');
+      apiStatusText.textContent = 'SecurityTrails: connected';
+    } else {
+      apiDot.classList.remove('connected');
+      apiStatusText.textContent = 'SecurityTrails: not connected';
+    }
+  }
+
+  /* ========== Escape HTML ========== */
+  function esc(str) {
+    if (str == null) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+  }
+
+  /* ========== Sortable Table Logic ========== */
+  var sortState = {};
+
+  function initSortableTable(table) {
+    var headers = table.querySelectorAll('th');
+    headers.forEach(function(th) {
+      th.addEventListener('click', function() {
+        var colIndex = parseInt(th.getAttribute('data-col'), 10);
+        var tbody = table.querySelector('tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        var tableId = table.id;
+        var key = tableId + '-' + colIndex;
+
+        if (!sortState[key]) sortState[key] = 'asc';
+        else if (sortState[key] === 'asc') sortState[key] = 'desc';
+        else sortState[key] = 'asc';
+
+        var ascending = sortState[key] === 'asc';
+
+        // Clear all sort arrows for this table
+        headers.forEach(function(h) {
+          h.querySelector('.sort-arrow').textContent = '';
+        });
+        th.querySelector('.sort-arrow').textContent = ascending ? '\u25B2' : '\u25BC';
+
+        rows.sort(function(a, b) {
+          var aVal = (a.cells[colIndex] || {}).textContent || '';
+          var bVal = (b.cells[colIndex] || {}).textContent || '';
+          // Try numeric sort
+          var aNum = parseFloat(aVal);
+          var bNum = parseFloat(bVal);
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return ascending ? aNum - bNum : bNum - aNum;
+          }
+          return ascending
+            ? aVal.localeCompare(bVal, undefined, { sensitivity: 'base' })
+            : bVal.localeCompare(aVal, undefined, { sensitivity: 'base' });
+        });
+
+        rows.forEach(function(row) { tbody.appendChild(row); });
+      });
+    });
+  }
+
+  initSortableTable(nsTable);
+  initSortableTable(dnsTable);
+  initSortableTable(validationTable);
+
+  /* ========== Clear Results ========== */
+  function clearResults() {
+    summaryContent.textContent = 'No data. Enter a domain or IP and click Query.';
+    soaContent.textContent = 'No SOA record found.';
+    whoisContent.textContent = 'WHOIS data unavailable.';
+    errorsContent.textContent = 'No errors or warnings.';
+    validationSummary.textContent = 'Validation requires SecurityTrails API key. Use the API Key button to connect.';
+    nsTable.querySelector('tbody').innerHTML = '';
+    dnsTable.querySelector('tbody').innerHTML = '';
+    validationTable.querySelector('tbody').innerHTML = '';
+    exportBtn.disabled = true;
+    lastQuery = null;
+  }
+
+  /* ========== Populate Functions ========== */
+
+  function populateSummary(result) {
+    var lines = [];
+    var w = result.whois;
+
+    lines.push('TRANSFER STATUS');
+    lines.push('==================================================');
+
+    if (w) {
+      var statuses = w.status || [];
+      var locked = statuses.some(function(s) {
+        return s.toLowerCase().indexOf('transferprohibited') !== -1;
+      });
+      var lockLabel = locked ? 'LOCKED' : 'UNLOCKED';
+      var lockCodes = statuses.filter(function(s) {
+        return s.toLowerCase().indexOf('transfer') !== -1;
+      });
+      var lockDetail = lockCodes.length > 0 ? ' (' + lockCodes.join(', ') + ')' : '';
+
+      lines.push('  Lock Status:    ' + lockLabel + lockDetail);
+      lines.push('  Registrar:      ' + (w.registrar || 'N/A'));
+      lines.push('  DNSSEC:         ' + (w.dnssec || 'N/A'));
+      lines.push('');
+      lines.push('DATES');
+      lines.push('--------------------------------------------------');
+      lines.push('  Created:        ' + (w.creation_date || 'N/A'));
+      lines.push('  Expires:        ' + (w.expiration_date || 'N/A'));
+      lines.push('  Updated:        ' + (w.updated_date || 'N/A'));
+      lines.push('');
+
+      if (statuses.length > 0) {
+        lines.push('EPP STATUS CODES');
+        lines.push('--------------------------------------------------');
+        statuses.forEach(function(s) { lines.push('  ' + s); });
+        lines.push('');
+      }
+    } else {
+      lines.push('  WHOIS data unavailable');
+      lines.push('');
+    }
+
+    lines.push('NAME SERVERS');
+    lines.push('--------------------------------------------------');
+    var ns = result.nameservers || [];
+    if (ns.length > 0) {
+      ns.forEach(function(rec) { lines.push('  ' + (rec.value || '')); });
+    } else {
+      lines.push('  No NS records found');
+    }
+
+    summaryContent.textContent = lines.join('\n');
+  }
+
+  function populateNameServers(nameservers) {
+    var tbody = nsTable.querySelector('tbody');
+    tbody.innerHTML = '';
+    if (!nameservers || nameservers.length === 0) return;
+
+    nameservers.forEach(function(rec) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(rec.name) + '</td>'
+                   + '<td>' + esc(rec.ttl) + '</td>'
+                   + '<td>' + esc(rec.value) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function populateSoa(soa) {
+    if (!soa) {
+      soaContent.textContent = 'No SOA record found.';
+      return;
+    }
+    var lines = [
+      'SOA RECORD',
+      '==================================================',
+      '  Primary NS:          ' + (soa.mname || 'N/A'),
+      '  Responsible Party:   ' + (soa.rname || 'N/A'),
+      '  Serial:              ' + (soa.serial != null ? soa.serial : 'N/A'),
+      '  Refresh:             ' + (soa.refresh != null ? soa.refresh + 's' : 'N/A'),
+      '  Retry:               ' + (soa.retry != null ? soa.retry + 's' : 'N/A'),
+      '  Expire:              ' + (soa.expire != null ? soa.expire + 's' : 'N/A'),
+      '  Minimum TTL:         ' + (soa.minimum != null ? soa.minimum + 's' : 'N/A'),
+    ];
+    soaContent.textContent = lines.join('\n');
+  }
+
+  function populateDnsRecords(dns_records, reverse_dns) {
+    var tbody = dnsTable.querySelector('tbody');
+    tbody.innerHTML = '';
+    var records = (dns_records || []).concat(reverse_dns || []);
+    if (records.length === 0) return;
+
+    records.forEach(function(rec) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(rec.record_type) + '</td>'
+                   + '<td>' + esc(rec.name) + '</td>'
+                   + '<td>' + esc(rec.ttl) + '</td>'
+                   + '<td>' + esc(rec.value) + '</td>'
+                   + '<td>' + (rec.priority != null ? esc(rec.priority) : '') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function populateWhois(whois) {
+    if (!whois) {
+      whoisContent.textContent = 'WHOIS data unavailable.';
+      return;
+    }
+    var lines = [];
+
+    lines.push('REGISTRAR');
+    lines.push('==================================================');
+    lines.push('  Name:    ' + (whois.registrar || 'N/A'));
+    lines.push('  URL:     ' + (whois.registrar_url || 'N/A'));
+    lines.push('');
+
+    lines.push('REGISTRANT CONTACT');
+    lines.push('--------------------------------------------------');
+    lines.push('  Name:    ' + (whois.registrant_name || 'N/A'));
+    lines.push('  Org:     ' + (whois.registrant_org || 'N/A'));
+    lines.push('  Email:   ' + (whois.registrant_email || 'N/A'));
+    lines.push('');
+
+    lines.push('ADMIN CONTACT');
+    lines.push('--------------------------------------------------');
+    lines.push('  Name:    ' + (whois.admin_name || 'N/A'));
+    lines.push('  Email:   ' + (whois.admin_email || 'N/A'));
+    lines.push('');
+
+    lines.push('TECH CONTACT');
+    lines.push('--------------------------------------------------');
+    lines.push('  Name:    ' + (whois.tech_name || 'N/A'));
+    lines.push('  Email:   ' + (whois.tech_email || 'N/A'));
+    lines.push('');
+
+    lines.push('DOMAIN STATUS');
+    lines.push('--------------------------------------------------');
+    var statuses = whois.status || [];
+    if (statuses.length > 0) {
+      statuses.forEach(function(s) { lines.push('  ' + s); });
+    } else {
+      lines.push('  No status codes available');
+    }
+    lines.push('');
+
+    lines.push('NAME SERVERS (WHOIS)');
+    lines.push('--------------------------------------------------');
+    var ns = whois.name_servers || [];
+    if (ns.length > 0) {
+      ns.forEach(function(n) { lines.push('  ' + n); });
+    } else {
+      lines.push('  No name servers listed');
+    }
+
+    whoisContent.textContent = lines.join('\n');
+  }
+
+  function populateValidation(validation) {
+    var tbody = validationTable.querySelector('tbody');
+    tbody.innerHTML = '';
+
+    if (!validation) {
+      validationSummary.textContent = apiKey
+        ? 'No validation data available.'
+        : 'Validation requires SecurityTrails API key. Use the API Key button to connect.';
+      return;
+    }
+
+    var s = validation.summary || {};
+    validationSummary.textContent = 'Results: '
+      + (s.matches || 0) + ' match, '
+      + (s.mismatches || 0) + ' mismatch, '
+      + (s.dns_only || 0) + ' DNS-only, '
+      + (s.st_only || 0) + ' SecurityTrails-only';
+
+    var statusLabels = {
+      'match': 'Match',
+      'mismatch': 'Mismatch',
+      'dns_only': 'DNS Only',
+      'st_only': 'ST Only',
+    };
+
+    var comparisons = validation.comparisons || [];
+    comparisons.forEach(function(comp) {
+      var tr = document.createElement('tr');
+      tr.className = 'status-' + (comp.status || '');
+      tr.innerHTML = '<td>' + esc(statusLabels[comp.status] || comp.status) + '</td>'
+                   + '<td>' + esc(comp.record_type) + '</td>'
+                   + '<td>' + esc(comp.dns_value) + '</td>'
+                   + '<td>' + esc(comp.st_value) + '</td>'
+                   + '<td>' + esc(comp.detail) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function populateErrors(errors, extraErrors) {
+    var all = (errors || []).concat(extraErrors || []);
+    if (all.length === 0) {
+      errorsContent.textContent = 'No errors or warnings.';
+    } else {
+      errorsContent.textContent = all.join('\n');
+    }
+  }
+
+  /* ========== Query ========== */
+  function doQuery() {
+    var query = queryInput.value.trim();
+    if (!query) {
+      setStatus('Please enter a domain or IP address.', 'error');
+      queryInput.focus();
+      return;
+    }
+    if (isQuerying) return;
+
+    isQuerying = true;
+    queryBtn.disabled = true;
+    exportBtn.disabled = true;
+    setStatus('Querying...', 'loading');
+
+    // Clear previous results
+    summaryContent.textContent = '';
+    soaContent.textContent = '';
+    whoisContent.textContent = '';
+    errorsContent.textContent = '';
+    validationSummary.textContent = '';
+    nsTable.querySelector('tbody').innerHTML = '';
+    dnsTable.querySelector('tbody').innerHTML = '';
+    validationTable.querySelector('tbody').innerHTML = '';
+
+    var body = { query: query };
+    if (apiKey) body.api_key = apiKey;
+
+    fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    .then(function(resp) {
+      if (!resp.ok) {
+        return resp.json().then(function(data) {
+          throw new Error(data.error || 'Server error: ' + resp.status);
+        });
+      }
+      return resp.json();
+    })
+    .then(function(data) {
+      var result = data.result;
+      var validation = data.validation || null;
+      var extraErrors = data.extra_errors || [];
+
+      lastQuery = query;
+
+      populateSummary(result);
+      populateNameServers(result.nameservers);
+      populateSoa(result.soa);
+      populateDnsRecords(result.dns_records, result.reverse_dns);
+      populateWhois(result.whois);
+      populateValidation(validation);
+      populateErrors(result.errors, extraErrors);
+
+      var errorCount = (result.errors || []).length + extraErrors.length;
+      if (errorCount > 0) {
+        setStatus('Done (' + errorCount + ' error' + (errorCount !== 1 ? 's' : '') + ')', 'success');
+      } else {
+        setStatus('Done', 'success');
+      }
+      exportBtn.disabled = false;
+    })
+    .catch(function(err) {
+      setStatus('Error: ' + err.message, 'error');
+    })
+    .finally(function() {
+      isQuerying = false;
+      queryBtn.disabled = false;
+    });
+  }
+
+  queryBtn.addEventListener('click', doQuery);
+  queryInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doQuery();
+  });
+
+  /* ========== Export CSV ========== */
+  exportBtn.addEventListener('click', function() {
+    if (!lastQuery) return;
+    var url = '/api/export?query=' + encodeURIComponent(lastQuery);
+    if (apiKey) url += '&api_key=' + encodeURIComponent(apiKey);
+    window.location.href = url;
+  });
+
+  /* ========== API Key Modal ========== */
+  apiKeyBtn.addEventListener('click', function() {
+    apiKeyInput.value = '';
+    apiModalError.textContent = '';
+    modalDisconnect.style.display = apiKey ? 'inline-block' : 'none';
+    apiModal.classList.add('visible');
+    apiKeyInput.focus();
+  });
+
+  modalCancel.addEventListener('click', function() {
+    apiModal.classList.remove('visible');
+  });
+
+  apiModal.addEventListener('click', function(e) {
+    if (e.target === apiModal) {
+      apiModal.classList.remove('visible');
+    }
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && apiModal.classList.contains('visible')) {
+      apiModal.classList.remove('visible');
+    }
+  });
+
+  modalDisconnect.addEventListener('click', function() {
+    apiKey = null;
+    setApiStatus(false);
+    apiModal.classList.remove('visible');
+  });
+
+  modalConnect.addEventListener('click', function() {
+    var key = apiKeyInput.value.trim();
+    if (!key) {
+      apiModalError.textContent = 'Please enter an API key.';
+      return;
+    }
+
+    apiModalError.textContent = '';
+    modalConnect.disabled = true;
+    modalConnect.textContent = 'Validating...';
+
+    fetch('/api/validate-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key }),
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      if (data.valid) {
+        apiKey = key;
+        setApiStatus(true);
+        apiModal.classList.remove('visible');
+      } else {
+        apiModalError.textContent = data.error || 'Invalid API key.';
+      }
+    })
+    .catch(function(err) {
+      apiModalError.textContent = 'Connection error: ' + err.message;
+    })
+    .finally(function() {
+      modalConnect.disabled = false;
+      modalConnect.textContent = 'Connect';
+    });
+  });
+
+  apiKeyInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') modalConnect.click();
+  });
+
+  /* ========== Init ========== */
+  queryInput.focus();
+
+})();
+</script>
+</body>
+</html>
