@@ -41,3 +41,4 @@ pytest tests/test_dns_resolver.py::test_resolve_domain_a_record -v
 - **`dnsquery/gui/`** — Tkinter GUI with `ttk.Notebook` tabs (Summary, Name Servers, SOA, DNS Records, WHOIS, Validation, Errors). DNS/WHOIS queries run on a background `threading.Thread`; results marshal back to the main thread via `root.after(0, callback)`.
 - **`dnsquery/web/`** — Flask web app with REST API (`/api/query`, `/api/validate-key`, `/api/export`) and single-page HTML frontend. Served via gunicorn in Docker.
 - **`main.py`** — Desktop entry point, launches `DNSQueryApp`.
+- **`deploy/docker-compose.yml`** — Production deployment for UnRAID. Pulls from GHCR (`ghcr.io/soballin93/dnsquery`) and runs Watchtower to auto-update containers hourly.

@@ -8,3 +8,9 @@ build/
 .git/
 *.csv
 .dockerignore
+.claude/
+.github/
+CLAUDE.md
+pytest.ini
+tests/
+deploy/
