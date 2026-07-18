@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This legacy compatibility file supplements the authoritative `AGENTS.md`.
 
 ## Project Overview
 
@@ -26,6 +26,9 @@ docker compose up --build
 # Run tests
 pytest
 
+# Lint baseline used by CI
+ruff check .
+
 # Run a single test
 pytest tests/test_dns_resolver.py::test_resolve_domain_a_record -v
 ```
@@ -39,6 +42,6 @@ pytest tests/test_dns_resolver.py::test_resolve_domain_a_record -v
 - **`dnsquery/validation.py`** — Cross-references direct DNS queries against SecurityTrails data. Compares A, AAAA, MX, NS, TXT, SOA records.
 - **`dnsquery/export.py`** — CSV export with sectioned layout (QUERY INFO, WHOIS, SOA, DNS RECORDS, ERRORS).
 - **`dnsquery/gui/`** — Tkinter GUI with `ttk.Notebook` tabs (Summary, Name Servers, SOA, DNS Records, WHOIS, Validation, Errors). DNS/WHOIS queries run on a background `threading.Thread`; results marshal back to the main thread via `root.after(0, callback)`.
-- **`dnsquery/web/`** — Flask web app with REST API (`/api/query`, `/api/validate-key`, `/api/export`) and single-page HTML frontend. Served via gunicorn in Docker.
+- **`dnsquery/web/`** — Flask web app with REST API (`/api/query`, `/api/validate-key`, `/api/export`) and single-page HTML frontend. API keys are accepted only in POST JSON bodies, never query strings. Served via gunicorn in Docker.
 - **`main.py`** — Desktop entry point, launches `DNSQueryApp`.
-- **`deploy/docker-compose.yml`** — Production deployment for UnRAID. Pulls from GHCR (`ghcr.io/soballin93/dnsquery`) and runs Watchtower to auto-update containers hourly.
+- **`deploy/docker-compose.yml`** — Production deployment for primary Unraid. DNSQuery is live on port 8080. Watchtower updates are explicitly disabled for this service so deployment can use a reviewed immutable image via `DNSQUERY_IMAGE`.

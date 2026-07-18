@@ -944,9 +944,35 @@
   /* ========== Export CSV ========== */
   exportBtn.addEventListener('click', function() {
     if (!lastQuery) return;
-    var url = '/api/export?query=' + encodeURIComponent(lastQuery);
-    if (apiKey) url += '&api_key=' + encodeURIComponent(apiKey);
-    window.location.href = url;
+    var body = { query: lastQuery };
+    if (apiKey) body.api_key = apiKey;
+
+    fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    .then(function(resp) {
+      if (!resp.ok) {
+        return resp.json().then(function(data) {
+          throw new Error(data.error || 'Export failed: ' + resp.status);
+        });
+      }
+      return resp.blob();
+    })
+    .then(function(blob) {
+      var downloadUrl = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = lastQuery.replace(/[^a-zA-Z0-9._-]+/g, '_') + '_dns_report.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    })
+    .catch(function(err) {
+      setStatus('Export error: ' + err.message, 'error');
+    });
   });
 
   /* ========== API Key Modal ========== */

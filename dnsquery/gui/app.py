@@ -107,8 +107,9 @@ class DNSQueryApp(tk.Tk):
                     result.errors.extend(validation.errors)
 
             self.after(0, lambda: self._on_query_complete(result, validation))
-        except Exception as e:
-            self.after(0, lambda: self.input_panel.set_error(str(e)))
+        except Exception as exc:
+            message = str(exc)
+            self.after(0, lambda message=message: self.input_panel.set_error(message))
 
     def _on_query_complete(self, result: QueryResult, validation: ValidationResult | None = None) -> None:
         self._result = result

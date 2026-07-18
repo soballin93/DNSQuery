@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import tempfile
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, after_this_request, jsonify, render_template, request, send_file
+from werkzeug.utils import secure_filename
 
 from dnsquery.dns_resolver import is_ip_address, resolve_domain, resolve_ip
 from dnsquery.export import export_to_csv
@@ -18,6 +20,11 @@ app = Flask(__name__)
 @app.route("/")
 def index() -> str:
     return render_template("index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "service": "dnsquery"})
 
 
 def _run_query(
@@ -101,13 +108,14 @@ def api_validate_key():
     return jsonify({"valid": valid, "error": error})
 
 
-@app.route("/api/export", methods=["GET"])
+@app.route("/api/export", methods=["POST"])
 def api_export():
-    query = request.args.get("query", "").strip()
+    data = request.get_json(silent=True)
+    query = (data or {}).get("query", "").strip()
     if not query:
-        return jsonify({"error": "Missing required parameter: query"}), 400
+        return jsonify({"error": "Missing required field: query"}), 400
 
-    api_key = request.args.get("api_key") or None
+    api_key = (data or {}).get("api_key") or None
 
     try:
         result, _validation, _extra_errors = _run_query(query, api_key)
@@ -124,7 +132,15 @@ def api_export():
     tmp.close()
     export_to_csv(result, tmp.name)
 
-    safe_name = query.replace(" ", "_").replace("/", "_")
+    @after_this_request
+    def remove_export(response):
+        try:
+            os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
+        return response
+
+    safe_name = secure_filename(query) or "dnsquery"
     download_name = f"{safe_name}_dns_report.csv"
 
     return send_file(
