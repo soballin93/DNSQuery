@@ -1,0 +1,20 @@
+{
+  "apiVersion": "policy/v1",
+  "kind": "PodDisruptionBudget",
+  "metadata": {
+    "name": "dnsquery",
+    "namespace": "platform-optional",
+    "labels": {
+      "app.kubernetes.io/name": "dnsquery",
+      "app.kubernetes.io/part-of": "homelab-platform"
+    }
+  },
+  "spec": {
+    "minAvailable": 1,
+    "selector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "dnsquery"
+      }
+    }
+  }
+}
