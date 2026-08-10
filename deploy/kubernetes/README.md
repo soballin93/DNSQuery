@@ -36,11 +36,12 @@ SecurityTrails key during cluster acceptance.
 
 A later reviewed change must add the approved private ingress, certificate, monitoring, and
 existing-access migration. It must not create broader reachability than the current service.
-After user-facing health, query, denial, and log checks pass, retain the Unraid container stopped but
-recoverable for a 24-hour observation interval.
+After user-facing health, query, denial, log, backup-exclusion, and rollback checks pass, retain the
+Unraid container stopped but recoverable through the normal seven-day retirement tombstone. There
+is no elapsed soak interval.
 
 Rollback restores access to the unchanged Unraid container, removes or suspends only the DNSQuery
 cluster objects, and verifies health plus the non-secret query at the original endpoint. Because
 this bundle creates no persistent volume or database, rollback has no data merge. Retire the source
-container only after the observation interval and the platform dependency, monitoring, and backup
-exclusion checks pass; preserve the normal seven-day retirement tombstone.
+container only after the immediate target checks and the platform dependency, monitoring, and
+backup-exclusion checks pass; preserve the normal seven-day retirement tombstone.
